@@ -1,0 +1,11 @@
+# ROS 2 工作空间编译产物
+/guguji_ros2_ws/build/
+/guguji_ros2_ws/install/
+/guguji_ros2_ws/log/
+
+# colcon/ament 常见缓存
+/guguji_ros2_ws/.colcon/
+
+# Python 运行缓存
+__pycache__/
+*.pyc

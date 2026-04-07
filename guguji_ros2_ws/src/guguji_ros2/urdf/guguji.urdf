@@ -2,6 +2,10 @@
 <!-- This URDF was automatically created by SolidWorks to URDF Exporter! Originally created by Stephen Brawner (brawner@gmail.com) 
      Commit Version: 1.6.0-4-g7f85cfe  Build Version: 1.6.7995.38578
      For more information, please see http://wiki.ros.org/sw_urdf_exporter -->
+<!-- 为了适配 ROS 2 Humble 仿真，这里仅对导出结果做了少量必要修正：
+     1. mesh 资源路径统一改到 guguji_ros2 包名下；
+     2. 修正左髋关节名拼写；
+     3. 将右踝俯仰关节改为与左侧一致的 revolute，避免仿真中单侧连续转动。 -->
 <robot
   name="guguji">
   <link
@@ -26,7 +30,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="package://guguji/meshes/base_link.STL" />
+          filename="package://guguji_ros2/meshes/base_link.STL" />
       </geometry>
       <material
         name="">
@@ -40,7 +44,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="package://guguji/meshes/base_link.STL" />
+          filename="package://guguji_ros2/meshes/base_link.STL" />
       </geometry>
     </collision>
   </link>
@@ -66,7 +70,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="package://guguji/meshes/left_hip_pitch_link.STL" />
+          filename="package://guguji_ros2/meshes/left_hip_pitch_link.STL" />
       </geometry>
       <material
         name="">
@@ -80,12 +84,12 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="package://guguji/meshes/left_hip_pitch_link.STL" />
+          filename="package://guguji_ros2/meshes/left_hip_pitch_link.STL" />
       </geometry>
     </collision>
   </link>
   <joint
-    name="eft_hip_pitch_joint"
+    name="left_hip_pitch_joint"
     type="revolute">
     <origin
       xyz="0.0212 0.075 -0.045"
@@ -124,7 +128,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="package://guguji/meshes/left_knee_pitch_link.STL" />
+          filename="package://guguji_ros2/meshes/left_knee_pitch_link.STL" />
       </geometry>
       <material
         name="">
@@ -138,7 +142,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="package://guguji/meshes/left_knee_pitch_link.STL" />
+          filename="package://guguji_ros2/meshes/left_knee_pitch_link.STL" />
       </geometry>
     </collision>
   </link>
@@ -182,7 +186,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="package://guguji/meshes/left_ankle_pitch_link.STL" />
+          filename="package://guguji_ros2/meshes/left_ankle_pitch_link.STL" />
       </geometry>
       <material
         name="">
@@ -196,7 +200,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="package://guguji/meshes/left_ankle_pitch_link.STL" />
+          filename="package://guguji_ros2/meshes/left_ankle_pitch_link.STL" />
       </geometry>
     </collision>
   </link>
@@ -240,7 +244,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="package://guguji/meshes/left_foot_link.STL" />
+          filename="package://guguji_ros2/meshes/left_foot_link.STL" />
       </geometry>
       <material
         name="">
@@ -254,7 +258,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="package://guguji/meshes/left_foot_link.STL" />
+          filename="package://guguji_ros2/meshes/left_foot_link.STL" />
       </geometry>
     </collision>
   </link>
@@ -298,7 +302,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="package://guguji/meshes/right_hip_pitch_link.STL" />
+          filename="package://guguji_ros2/meshes/right_hip_pitch_link.STL" />
       </geometry>
       <material
         name="">
@@ -312,7 +316,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="package://guguji/meshes/right_hip_pitch_link.STL" />
+          filename="package://guguji_ros2/meshes/right_hip_pitch_link.STL" />
       </geometry>
     </collision>
   </link>
@@ -356,7 +360,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="package://guguji/meshes/right_knee_pitch_link.STL" />
+          filename="package://guguji_ros2/meshes/right_knee_pitch_link.STL" />
       </geometry>
       <material
         name="">
@@ -370,7 +374,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="package://guguji/meshes/right_knee_pitch_link.STL" />
+          filename="package://guguji_ros2/meshes/right_knee_pitch_link.STL" />
       </geometry>
     </collision>
   </link>
@@ -414,7 +418,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="package://guguji/meshes/right_ankle_pitch_link.STL" />
+          filename="package://guguji_ros2/meshes/right_ankle_pitch_link.STL" />
       </geometry>
       <material
         name="">
@@ -428,13 +432,13 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="package://guguji/meshes/right_ankle_pitch_link.STL" />
+          filename="package://guguji_ros2/meshes/right_ankle_pitch_link.STL" />
       </geometry>
     </collision>
   </link>
   <joint
     name="right_ankle_pitch_joint"
-    type="continuous">
+    type="revolute">
     <origin
       xyz="-0.10001 0.069002 -0.064992"
       rpy="0 0 0" />
@@ -444,6 +448,11 @@
       link="right_ankle_pitch_link" />
     <axis
       xyz="0 1 0" />
+    <limit
+      lower="0"
+      upper="0"
+      effort="0"
+      velocity="0" />
   </joint>
   <link
     name="right_foot_link">
@@ -467,7 +476,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="package://guguji/meshes/right_foot_link.STL" />
+          filename="package://guguji_ros2/meshes/right_foot_link.STL" />
       </geometry>
       <material
         name="">
@@ -481,7 +490,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="package://guguji/meshes/right_foot_link.STL" />
+          filename="package://guguji_ros2/meshes/right_foot_link.STL" />
       </geometry>
     </collision>
   </link>

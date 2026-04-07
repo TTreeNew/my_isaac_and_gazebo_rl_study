@@ -1,0 +1,9 @@
+controller_joint_names:
+  - left_hip_pitch_joint
+  - left_knee_pitch_joint
+  - left_ankle_pitch_joint
+  - left_ankle_joint
+  - right_hip_pitch_joint
+  - right_knee_pitch_joint
+  - right_ankle_pitch_joint
+  - right_ankle_joint
