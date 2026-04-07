@@ -11,7 +11,6 @@ from launch.actions import (
     SetLaunchConfiguration,
     TimerAction,
 )
-from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import (
     EnvironmentVariable,
@@ -20,6 +19,18 @@ from launch.substitutions import (
 )
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
+
+
+JOINT_NAMES = [
+    'left_hip_pitch_joint',
+    'left_knee_pitch_joint',
+    'left_ankle_pitch_joint',
+    'left_ankle_joint',
+    'right_hip_pitch_joint',
+    'right_knee_pitch_joint',
+    'right_ankle_pitch_joint',
+    'right_ankle_joint',
+]
 
 
 def _configure_gz_args(context, *args, **kwargs):
@@ -56,6 +67,47 @@ def _configure_gz_args(context, *args, **kwargs):
     ]
 
 
+def _create_bridge_node(context, *args, **kwargs):
+    """创建 Fortress <-> ROS 的桥接节点。"""
+    world_name = LaunchConfiguration('world_name').perform(context)
+    bridge_tf = LaunchConfiguration('bridge_tf').perform(context).lower() == 'true'
+
+    bridge_arguments = [
+        # 仿真时钟：Gazebo -> ROS
+        '/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock',
+        # 关节状态：Gazebo -> ROS
+        f'/world/{world_name}/model/guguji/joint_state@sensor_msgs/msg/JointState[gz.msgs.Model',
+    ]
+
+    remappings = [
+        (f'/world/{world_name}/model/guguji/joint_state', '/joint_states'),
+    ]
+
+    if bridge_tf:
+        # 这里把 Gazebo 的 Pose_V 直接桥接到 /tf。
+        # 这样 TF 反映的就是仿真里的真实位姿，而不是仅由 URDF 正向解算得到的理想位姿。
+        bridge_arguments.append('/model/guguji/pose@tf2_msgs/msg/TFMessage[gz.msgs.Pose_V')
+        remappings.append(('/model/guguji/pose', '/tf'))
+
+    # 每个关节都提供一个 ROS -> Gazebo 的位置命令话题。
+    # 话题名与 URDF 中控制器插件的 <topic> 配置保持一致。
+    for joint_name in JOINT_NAMES:
+        bridge_arguments.append(
+            f'/guguji/command/{joint_name}@std_msgs/msg/Float64]gz.msgs.Double'
+        )
+
+    return [
+        Node(
+            package='ros_gz_bridge',
+            executable='parameter_bridge',
+            name='guguji_gz_bridge',
+            output='screen',
+            arguments=bridge_arguments,
+            remappings=remappings,
+        )
+    ]
+
+
 def generate_launch_description():
     package_name = 'guguji_ros2'
     package_share = get_package_share_directory(package_name)
@@ -63,8 +115,8 @@ def generate_launch_description():
     urdf_path = os.path.join(package_share, 'urdf', 'guguji.urdf')
     default_world = os.path.join(package_share, 'worlds', 'empty.world')
 
-    # 这里继续保留 robot_state_publisher + joint_state_publisher 的组合，
-    # 这样即使暂时还没有接入 ros2_control，也能先把 TF 树和基础模型显示跑起来。
+    # 这里保留 robot_state_publisher，主要用于提供 /robot_description。
+    # 仿真中的真实 joint_states 和 /tf 则由 Gazebo + ros_gz_bridge 负责。
     with open(urdf_path, 'r', encoding='utf-8') as urdf_file:
         robot_description = urdf_file.read()
 
@@ -74,7 +126,6 @@ def generate_launch_description():
     gui = LaunchConfiguration('gui')
     pause = LaunchConfiguration('pause')
     verbose = LaunchConfiguration('verbose')
-    publish_joint_state = LaunchConfiguration('publish_joint_state')
     x_pose = LaunchConfiguration('x_pose')
     y_pose = LaunchConfiguration('y_pose')
     z_pose = LaunchConfiguration('z_pose')
@@ -130,16 +181,15 @@ def generate_launch_description():
         arguments=[
             '-world', world_name,
             '-name', 'guguji',
-            # 直接从 /robot_description 取模型字符串，
-            # 后续如果你把 URDF 改成 xacro，也不需要改这里的加载方式。
-            '-topic', '/robot_description',
+            # 这里直接从安装后的 URDF 文件生成模型，
+            # 启动链路更直接，也避免了 spawn 依赖 /robot_description 话题时序。
+            '-file', urdf_path,
             '-x', x_pose,
             '-y', y_pose,
             '-z', z_pose,
             '-R', roll,
             '-P', pitch,
             '-Y', yaw,
-            '-allow_renaming', 'true',
         ],
     )
 
@@ -175,9 +225,9 @@ def generate_launch_description():
             description='Gazebo 日志等级；可填 false/true 或数值 0~4'
         ),
         DeclareLaunchArgument(
-            'publish_joint_state',
+            'bridge_tf',
             default_value='true',
-            description='未接入控制器前，是否用 joint_state_publisher 发布默认关节角'
+            description='是否把 Gazebo 的真实位姿桥接到 ROS /tf'
         ),
         DeclareLaunchArgument(
             'x_pose',
@@ -218,22 +268,20 @@ def generate_launch_description():
             executable='robot_state_publisher',
             name='robot_state_publisher',
             output='screen',
+            # Gazebo 已经会发布真实 /tf，因此这里把 robot_state_publisher 的 TF 重定向到调试话题，
+            # 只保留它的 /robot_description 能力，避免双份 TF 冲突。
+            remappings=[
+                ('/tf', '/guguji/debug/robot_state_publisher/tf'),
+                ('/tf_static', '/guguji/debug/robot_state_publisher/tf_static'),
+            ],
             parameters=[{
                 'robot_description': robot_description,
                 'use_sim_time': use_sim_time,
             }],
         ),
-        Node(
-            package='joint_state_publisher',
-            executable='joint_state_publisher',
-            name='joint_state_publisher',
-            condition=IfCondition(publish_joint_state),
-            output='screen',
-            parameters=[{
-                'robot_description': robot_description,
-                'use_sim_time': use_sim_time,
-            }],
-        ),
+        # 创建 ROS <-> Gazebo 的桥接节点：
+        # /clock、/joint_states、/tf 以及每个关节的位置控制命令都从这里打通。
+        OpaqueFunction(function=_create_bridge_node),
         # 稍微等待 Gazebo 世界初始化完成后再创建模型，可减少 Fortress 启动初期的竞争问题。
         TimerAction(
             period=2.0,

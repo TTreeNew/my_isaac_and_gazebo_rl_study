@@ -1,3 +1,5 @@
+# 这里保持与 URDF / Gazebo 控制器中的关节命名一致。
+# 后续如果你增加新关节，建议优先同步修改这个列表，避免调试时名称对不上。
 controller_joint_names:
   - left_hip_pitch_joint
   - left_knee_pitch_joint

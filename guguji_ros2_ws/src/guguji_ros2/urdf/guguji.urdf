@@ -516,4 +516,118 @@
       effort="8.0"
       velocity="2.0" />
   </joint>
+
+  <!-- Gazebo Fortress 仿真插件配置 -->
+  <gazebo>
+    <!-- 1. 让 Gazebo 直接发布模型的真实关节状态。
+         后续 launch 文件会把这个 Gazebo 话题桥接成 ROS 侧的 /joint_states。 -->
+    <plugin
+      filename="ignition-gazebo-joint-state-publisher-system"
+      name="ignition::gazebo::systems::JointStatePublisher">
+    </plugin>
+
+    <!-- 2. 让 Gazebo 直接发布模型/连杆位姿。
+         这比 robot_state_publisher 更接近仿真真实状态，尤其是机器人底座在世界坐标中的运动。 -->
+    <plugin
+      filename="ignition-gazebo-pose-publisher-system"
+      name="ignition::gazebo::systems::PosePublisher">
+      <publish_link_pose>true</publish_link_pose>
+      <publish_model_pose>true</publish_model_pose>
+      <publish_nested_model_pose>true</publish_nested_model_pose>
+      <use_pose_vector_msg>true</use_pose_vector_msg>
+      <static_publisher>false</static_publisher>
+      <static_update_frequency>1</static_update_frequency>
+    </plugin>
+
+    <!-- 3. 为每个关节挂一个位置控制器。
+         控制器订阅的 topic 会在 launch 文件里桥接成 ROS 话题，
+         这样你可以直接向 /guguji/command/<joint_name> 发送 Float64 角度命令。 -->
+    <plugin
+      filename="ignition-gazebo-joint-position-controller-system"
+      name="ignition::gazebo::systems::JointPositionController">
+      <joint_name>left_hip_pitch_joint</joint_name>
+      <topic>/guguji/command/left_hip_pitch_joint</topic>
+      <p_gain>15.0</p_gain>
+      <i_gain>0.0</i_gain>
+      <d_gain>0.8</d_gain>
+      <initial_position>0.0</initial_position>
+    </plugin>
+
+    <plugin
+      filename="ignition-gazebo-joint-position-controller-system"
+      name="ignition::gazebo::systems::JointPositionController">
+      <joint_name>left_knee_pitch_joint</joint_name>
+      <topic>/guguji/command/left_knee_pitch_joint</topic>
+      <p_gain>15.0</p_gain>
+      <i_gain>0.0</i_gain>
+      <d_gain>0.8</d_gain>
+      <initial_position>0.0</initial_position>
+    </plugin>
+
+    <plugin
+      filename="ignition-gazebo-joint-position-controller-system"
+      name="ignition::gazebo::systems::JointPositionController">
+      <joint_name>left_ankle_pitch_joint</joint_name>
+      <topic>/guguji/command/left_ankle_pitch_joint</topic>
+      <p_gain>12.0</p_gain>
+      <i_gain>0.0</i_gain>
+      <d_gain>0.6</d_gain>
+      <initial_position>0.0</initial_position>
+    </plugin>
+
+    <plugin
+      filename="ignition-gazebo-joint-position-controller-system"
+      name="ignition::gazebo::systems::JointPositionController">
+      <joint_name>left_ankle_joint</joint_name>
+      <topic>/guguji/command/left_ankle_joint</topic>
+      <p_gain>12.0</p_gain>
+      <i_gain>0.0</i_gain>
+      <d_gain>0.6</d_gain>
+      <initial_position>0.0</initial_position>
+    </plugin>
+
+    <plugin
+      filename="ignition-gazebo-joint-position-controller-system"
+      name="ignition::gazebo::systems::JointPositionController">
+      <joint_name>right_hip_pitch_joint</joint_name>
+      <topic>/guguji/command/right_hip_pitch_joint</topic>
+      <p_gain>15.0</p_gain>
+      <i_gain>0.0</i_gain>
+      <d_gain>0.8</d_gain>
+      <initial_position>0.0</initial_position>
+    </plugin>
+
+    <plugin
+      filename="ignition-gazebo-joint-position-controller-system"
+      name="ignition::gazebo::systems::JointPositionController">
+      <joint_name>right_knee_pitch_joint</joint_name>
+      <topic>/guguji/command/right_knee_pitch_joint</topic>
+      <p_gain>15.0</p_gain>
+      <i_gain>0.0</i_gain>
+      <d_gain>0.8</d_gain>
+      <initial_position>0.0</initial_position>
+    </plugin>
+
+    <plugin
+      filename="ignition-gazebo-joint-position-controller-system"
+      name="ignition::gazebo::systems::JointPositionController">
+      <joint_name>right_ankle_pitch_joint</joint_name>
+      <topic>/guguji/command/right_ankle_pitch_joint</topic>
+      <p_gain>12.0</p_gain>
+      <i_gain>0.0</i_gain>
+      <d_gain>0.6</d_gain>
+      <initial_position>0.0</initial_position>
+    </plugin>
+
+    <plugin
+      filename="ignition-gazebo-joint-position-controller-system"
+      name="ignition::gazebo::systems::JointPositionController">
+      <joint_name>right_ankle_joint</joint_name>
+      <topic>/guguji/command/right_ankle_joint</topic>
+      <p_gain>12.0</p_gain>
+      <i_gain>0.0</i_gain>
+      <d_gain>0.6</d_gain>
+      <initial_position>0.0</initial_position>
+    </plugin>
+  </gazebo>
 </robot>
