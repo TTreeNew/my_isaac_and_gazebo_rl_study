@@ -1,0 +1,93 @@
+experiment:
+  name: forward_transition_ppo
+
+robot:
+  model_name: guguji
+  urdf_path: guguji_ros2_ws/src/guguji_ros2/urdf/guguji.urdf
+  joint_names:
+    - left_hip_pitch_joint
+    - left_knee_pitch_joint
+    - left_ankle_pitch_joint
+    - left_ankle_joint
+    - right_hip_pitch_joint
+    - right_knee_pitch_joint
+    - right_ankle_pitch_joint
+    - right_ankle_joint
+  command_topic_prefix: /guguji/command
+  # 过渡阶段仍然沿用稳定的平衡站姿，只是在其基础上允许更积极一点的残差动作。
+  nominal_joint_positions:
+    left_hip_pitch_joint: 0.0
+    left_knee_pitch_joint: 0.0
+    left_ankle_pitch_joint: 0.0
+    left_ankle_joint: 0.0
+    right_hip_pitch_joint: 0.0
+    right_knee_pitch_joint: 0.0
+    right_ankle_pitch_joint: 0.0
+    right_ankle_joint: 0.0
+  action_scale: 0.16
+  action_smoothing: 0.80
+
+ros:
+  joint_state_topic: /joint_states
+  tf_topic: /tf
+  clock_topic: /clock
+  world_control_service: /world/default/control
+
+sim:
+  world_name: default
+  # 继续保持 service_step，保证课程学习阶段每一步都可控。
+  step_mode: service_step
+  control_dt: 0.05
+  service_step_iterations: 18
+  reset_settle_seconds: 1.0
+  reset_hold_steps: 8
+  action_publish_delay: 0.01
+  post_step_wait_seconds: 0.01
+  launch_hint: ros2 launch guguji_ros2 gazebo.launch.py pause:=true
+
+task:
+  # 从非常小的前进目标开始，让机器人先学会“想往前”，而不是立刻追求快走。
+  target_forward_velocity: 0.05
+  target_base_height: null
+  max_roll_rad: 0.90
+  max_pitch_rad: 0.90
+  min_base_height: 0.23
+  termination_grace_steps: 8
+
+rewards:
+  # 过渡阶段仍然优先保命，但比纯平衡阶段更强调向前速度跟踪。
+  alive_bonus: 1.8
+  velocity_tracking_scale: 2.4
+  velocity_tracking_sigma: 0.18
+  upright_scale: 2.0
+  height_scale: 1.0
+  action_rate_penalty_scale: 0.012
+  joint_limit_penalty_scale: 0.05
+  lateral_velocity_penalty_scale: 0.12
+  fall_penalty: -10.0
+
+training:
+  algorithm: ppo
+  # 这一版过渡训练先拉长到 20000 步，用来巩固轻微前进能力。
+  total_timesteps: 20000
+  max_episode_steps: 400
+  seed: 42
+  device: auto
+  # 课程学习阶段建议从平衡模型继续训练，而不是重新从零开始。
+  init_model_path: null
+  learning_rate: 0.0002
+  n_steps: 128
+  batch_size: 64
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_range: 0.2
+  ent_coef: 0.0
+  vf_coef: 0.5
+  policy_net_arch: [256, 256]
+  # 保留更密一点的 checkpoint，方便你中途挑选效果更好的阶段模型。
+  checkpoint_freq: 5000
+  output_root: guguji_rl/outputs
+
+evaluation:
+  episodes: 3
+  deterministic: true

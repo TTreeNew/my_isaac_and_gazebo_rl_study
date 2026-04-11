@@ -14,6 +14,18 @@ robot:
     - right_ankle_pitch_joint
     - right_ankle_joint
   command_topic_prefix: /guguji/command
+  # 第一版先围绕一个安全站姿做小范围残差控制，避免随机策略一步把机器人打翻。
+  nominal_joint_positions:
+    left_hip_pitch_joint: 0.0
+    left_knee_pitch_joint: 0.0
+    left_ankle_pitch_joint: 0.0
+    left_ankle_joint: 0.0
+    right_hip_pitch_joint: 0.0
+    right_knee_pitch_joint: 0.0
+    right_ankle_pitch_joint: 0.0
+    right_ankle_joint: 0.0
+  action_scale: 0.12
+  action_smoothing: 0.85
 
 ros:
   joint_state_topic: /joint_states
@@ -26,30 +38,35 @@ sim:
   # 强化学习训练更适合用 service_step，能让每一步更可控、更容易复现。
   step_mode: service_step
   control_dt: 0.05
-  service_step_iterations: 50
+  # 每次动作只推进较少的物理步，降低初期随机动作的破坏性。
+  service_step_iterations: 15
   reset_settle_seconds: 1.0
+  # reset 后先保持几步名义站姿，让机器人回到更稳定的初始状态。
+  reset_hold_steps: 8
   action_publish_delay: 0.01
   post_step_wait_seconds: 0.01
-  # 训练时建议 Gazebo 以 pause 模式启动，再由训练程序按步推进仿真。
-  launch_hint: ros2 launch guguji_ros2 gazebo.launch.py gui:=false pause:=true
+  # 这里保留 GUI 版启动提示，方便你直观看训练时机器人在做什么。
+  launch_hint: ros2 launch guguji_ros2 gazebo.launch.py pause:=true
 
 task:
   target_forward_velocity: 0.0
   target_base_height: null
-  max_roll_rad: 0.60
-  max_pitch_rad: 0.60
-  min_base_height: 0.14
+  # 第一轮先放宽跌倒判定，避免轻微摆动就立刻结束 episode。
+  max_roll_rad: 1.00
+  max_pitch_rad: 1.00
+  min_base_height: 0.24
+  termination_grace_steps: 8
 
 rewards:
-  alive_bonus: 1.0
+  alive_bonus: 2.0
   velocity_tracking_scale: 1.5
   velocity_tracking_sigma: 0.30
   upright_scale: 2.0
   height_scale: 1.0
-  action_rate_penalty_scale: 0.03
+  action_rate_penalty_scale: 0.01
   joint_limit_penalty_scale: 0.05
   lateral_velocity_penalty_scale: 0.10
-  fall_penalty: -15.0
+  fall_penalty: -8.0
 
 training:
   algorithm: ppo
@@ -58,8 +75,9 @@ training:
   seed: 42
   device: auto
   learning_rate: 0.0003
-  n_steps: 1024
-  batch_size: 256
+  # 单 Gazebo 环境训练很慢，这里先把 rollout 变短，便于更快看到日志反馈。
+  n_steps: 128
+  batch_size: 64
   gamma: 0.99
   gae_lambda: 0.95
   clip_range: 0.2

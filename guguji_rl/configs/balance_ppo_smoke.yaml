@@ -1,0 +1,74 @@
+experiment:
+  name: balance_ppo_smoke
+
+robot:
+  model_name: guguji
+  urdf_path: guguji_ros2_ws/src/guguji_ros2/urdf/guguji.urdf
+  joint_names:
+    - left_hip_pitch_joint
+    - left_knee_pitch_joint
+    - left_ankle_pitch_joint
+    - left_ankle_joint
+    - right_hip_pitch_joint
+    - right_knee_pitch_joint
+    - right_ankle_pitch_joint
+    - right_ankle_joint
+  command_topic_prefix: /guguji/command
+
+ros:
+  joint_state_topic: /joint_states
+  tf_topic: /tf
+  clock_topic: /clock
+  world_control_service: /world/default/control
+
+sim:
+  world_name: default
+  # 冒烟检查配置仍然使用 service_step，保持训练过程可重复。
+  step_mode: service_step
+  control_dt: 0.05
+  service_step_iterations: 50
+  reset_settle_seconds: 1.0
+  action_publish_delay: 0.01
+  post_step_wait_seconds: 0.01
+  launch_hint: ros2 launch guguji_ros2 gazebo.launch.py gui:=false pause:=true
+
+task:
+  target_forward_velocity: 0.0
+  target_base_height: null
+  max_roll_rad: 0.60
+  max_pitch_rad: 0.60
+  min_base_height: 0.14
+
+rewards:
+  alive_bonus: 1.0
+  velocity_tracking_scale: 1.5
+  velocity_tracking_sigma: 0.30
+  upright_scale: 2.0
+  height_scale: 1.0
+  action_rate_penalty_scale: 0.03
+  joint_limit_penalty_scale: 0.05
+  lateral_velocity_penalty_scale: 0.10
+  fall_penalty: -15.0
+
+training:
+  algorithm: ppo
+  # 这个配置专门用于首轮训练诊断，让 PPO 更快打印统计信息。
+  total_timesteps: 2048
+  max_episode_steps: 400
+  seed: 42
+  device: cpu
+  learning_rate: 0.0003
+  n_steps: 128
+  batch_size: 64
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_range: 0.2
+  ent_coef: 0.0
+  vf_coef: 0.5
+  policy_net_arch: [256, 256]
+  checkpoint_freq: 1024
+  output_root: guguji_rl/outputs
+
+evaluation:
+  episodes: 2
+  deterministic: true

@@ -40,6 +40,13 @@ class BipedRewardCalculator:
         sigma = max(float(self.reward_config['velocity_tracking_sigma']), 1e-6)
         velocity_error = forward_velocity - context.target_forward_velocity
         velocity_tracking = np.exp(-(velocity_error * velocity_error) / (2.0 * sigma * sigma))
+        # 仅奖励“真正向前”的速度，避免策略通过左右晃动或后退来钻空子。
+        positive_forward_velocity = max(forward_velocity, 0.0)
+        backward_velocity = max(-forward_velocity, 0.0)
+
+        # 如果前向速度长期太低，就给一个停滞惩罚，逼着策略去迈开步子。
+        stall_velocity_threshold = float(self.reward_config.get('stall_velocity_threshold', 0.0))
+        stall_penalty = max(stall_velocity_threshold - positive_forward_velocity, 0.0)
 
         action_rate_penalty = float(np.mean(np.square(context.action - context.previous_action)))
 
@@ -49,14 +56,52 @@ class BipedRewardCalculator:
             joint_limit_penalty += max(normalized - 0.9, 0.0)
         joint_limit_penalty /= max(len(context.joint_limits), 1)
 
+        joint_name_to_index = {
+            joint_limit.name: index
+            for index, joint_limit in enumerate(context.joint_limits)
+        }
+        hip_alternation_reward = 0.0
+        knee_flexion_reward = 0.0
+
+        left_hip_index = joint_name_to_index.get('left_hip_pitch_joint')
+        right_hip_index = joint_name_to_index.get('right_hip_pitch_joint')
+        if left_hip_index is not None and right_hip_index is not None:
+            left_hip = float(context.current.joint_position[left_hip_index])
+            right_hip = float(context.current.joint_position[right_hip_index])
+            hip_separation = abs(left_hip - right_hip)
+            hip_target_separation = max(float(self.reward_config.get('hip_target_separation', 0.3)), 1e-6)
+            hip_antiphase_sigma = max(float(self.reward_config.get('hip_antiphase_sigma', 0.2)), 1e-6)
+            # 鼓励左右髋关节朝相反方向摆动，并且摆动幅度不要太小。
+            hip_separation_reward = min(hip_separation / hip_target_separation, 1.0)
+            hip_antiphase_reward = np.exp(-((left_hip + right_hip) ** 2) / (2.0 * hip_antiphase_sigma ** 2))
+            hip_alternation_reward = float(hip_separation_reward * hip_antiphase_reward)
+
+        left_knee_index = joint_name_to_index.get('left_knee_pitch_joint')
+        right_knee_index = joint_name_to_index.get('right_knee_pitch_joint')
+        if left_knee_index is not None and right_knee_index is not None:
+            left_knee = abs(float(context.current.joint_position[left_knee_index]))
+            right_knee = abs(float(context.current.joint_position[right_knee_index]))
+            knee_target = float(self.reward_config.get('knee_target', 0.2))
+            knee_sigma = max(float(self.reward_config.get('knee_flexion_sigma', 0.12)), 1e-6)
+            average_knee_flexion = 0.5 * (left_knee + right_knee)
+            # 鼓励膝关节保持适度弯曲，帮助策略学会抬腿而不是整条腿僵直拖行。
+            knee_flexion_reward = float(
+                np.exp(-((average_knee_flexion - knee_target) ** 2) / (2.0 * knee_sigma ** 2))
+            )
+
         reward_terms = {
             'alive_bonus': float(self.reward_config['alive_bonus']),
             'velocity_tracking': float(self.reward_config['velocity_tracking_scale']) * float(velocity_tracking),
+            'forward_progress': float(self.reward_config.get('forward_progress_scale', 0.0)) * positive_forward_velocity,
+            'hip_alternation': float(self.reward_config.get('hip_alternation_scale', 0.0)) * hip_alternation_reward,
+            'knee_flexion': float(self.reward_config.get('knee_flexion_scale', 0.0)) * knee_flexion_reward,
             'upright': float(self.reward_config['upright_scale']) * float(upright_reward),
             'height': float(self.reward_config['height_scale']) * float(height_reward),
             'action_rate_penalty': -float(self.reward_config['action_rate_penalty_scale']) * action_rate_penalty,
             'joint_limit_penalty': -float(self.reward_config['joint_limit_penalty_scale']) * joint_limit_penalty,
             'lateral_velocity_penalty': -float(self.reward_config['lateral_velocity_penalty_scale']) * abs(lateral_velocity),
+            'backward_velocity_penalty': -float(self.reward_config.get('backward_velocity_penalty_scale', 0.0)) * backward_velocity,
+            'stall_penalty': -float(self.reward_config.get('stall_penalty_scale', 0.0)) * stall_penalty,
         }
 
         total_reward = sum(reward_terms.values())

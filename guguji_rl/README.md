@@ -26,8 +26,9 @@
 1. 先启动 Gazebo 仿真
 2. 再运行 `check_env.py` 检查 ROS 2 / Gazebo 训练接口
 3. 先跑 `balance_ppo.yaml` 训练站立平衡
-4. 再跑 `walk_ppo.yaml` 训练前进
-5. 训练出模型后，先用 `evaluate.py` 做回放，再用 `run_policy.py` 在 ROS 2 系统中持续推理控制
+4. 再跑 `forward_transition_ppo.yaml` 做轻微前进过渡训练
+5. 最后再跑 `walk_ppo.yaml` 训练正式前进
+6. 训练出模型后，先用 `evaluate.py` 做回放，再用 `run_policy.py` 在 ROS 2 系统中持续推理控制
 
 ## 安装依赖
 
@@ -65,4 +66,16 @@ python3 scripts/run_policy.py \
   --config configs/walk_ppo.yaml \
   --model outputs/<你的实验目录>/final_model.zip \
   --deterministic
+```
+
+## 课程学习训练示例
+
+如果你已经训练出一个平衡模型，建议轻微前进阶段直接在它的基础上继续训练：
+
+```bash
+cd /home/corvin/Project/guguji_simulation/guguji_rl
+source .venv/bin/activate
+python3 scripts/train.py \
+  --config configs/forward_transition_ppo.yaml \
+  --init-model outputs/<你的平衡实验目录>/final_model.zip
 ```

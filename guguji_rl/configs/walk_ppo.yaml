@@ -14,6 +14,21 @@ robot:
     - right_ankle_pitch_joint
     - right_ankle_joint
   command_topic_prefix: /guguji/command
+  # walking 首版仍然采用“名义站姿 + 残差动作”的方式，
+  # 这样可以直接沿用 transition 阶段已经学到的稳定姿态能力。
+  nominal_joint_positions:
+    left_hip_pitch_joint: 0.0
+    left_knee_pitch_joint: 0.0
+    left_ankle_pitch_joint: 0.0
+    left_ankle_joint: 0.0
+    right_hip_pitch_joint: 0.0
+    right_knee_pitch_joint: 0.0
+    right_ankle_pitch_joint: 0.0
+    right_ankle_joint: 0.0
+  # 在 reset 修好后，再把动作空间稍微放大一点，让策略更容易真正迈开步子。
+  action_scale: 0.26
+  # 比上一轮略微降低平滑，给左右腿交替摆动更多空间。
+  action_smoothing: 0.62
 
 ros:
   joint_state_topic: /joint_states
@@ -23,50 +38,79 @@ ros:
 
 sim:
   world_name: default
-  # 走路训练也建议采用 service_step，便于稳定做 step / reward 对齐。
+  # walking 训练继续使用 service_step，便于一步动作对应一步奖励。
   step_mode: service_step
   control_dt: 0.05
-  service_step_iterations: 50
-  reset_settle_seconds: 1.2
+  # 仍然略高于上一版 walking，用于放大迈步动作的实际位移。
+  service_step_iterations: 22
+  reset_settle_seconds: 1.0
+  reset_hold_steps: 6
+  # reset 时会直接删掉并重生模型，这里就是重生时使用的初始位姿。
+  spawn_x: 0.0
+  spawn_y: 0.0
+  spawn_z: 0.35
+  spawn_roll: 0.0
+  spawn_pitch: 0.0
+  spawn_yaw: 0.0
   action_publish_delay: 0.01
   post_step_wait_seconds: 0.01
-  # 训练时建议 Gazebo 以 pause 模式启动，再由训练程序按步推进仿真。
-  launch_hint: ros2 launch guguji_ros2 gazebo.launch.py gui:=false pause:=true
+  # 如果你想实时看画面，建议像现在这样开着 GUI 并使用 pause:=true。
+  launch_hint: ros2 launch guguji_ros2 gazebo.launch.py pause:=true
 
 task:
-  target_forward_velocity: 0.25
+  # 再把目标速度往上推一点，进一步压缩“原地小幅挪动”的可行空间。
+  target_forward_velocity: 0.18
   target_base_height: null
-  max_roll_rad: 0.65
-  max_pitch_rad: 0.65
-  min_base_height: 0.12
+  # 允许稍大一点机体摆动，为迈步时的动态平衡留空间。
+  max_roll_rad: 0.90
+  max_pitch_rad: 0.90
+  min_base_height: 0.21
+  termination_grace_steps: 12
 
 rewards:
-  alive_bonus: 1.0
-  velocity_tracking_scale: 3.0
-  velocity_tracking_sigma: 0.25
-  upright_scale: 1.5
-  height_scale: 0.8
-  action_rate_penalty_scale: 0.04
+  # 这一版在前进奖励之外，额外加入轻量步态先验:
+  # 1. hip_alternation 鼓励左右髋关节交替摆动
+  # 2. knee_flexion 鼓励膝关节适度弯曲，帮助抬腿
+  alive_bonus: 0.8
+  velocity_tracking_scale: 3.8
+  velocity_tracking_sigma: 0.10
+  forward_progress_scale: 4.2
+  hip_alternation_scale: 0.8
+  hip_target_separation: 0.35
+  hip_antiphase_sigma: 0.18
+  knee_flexion_scale: 0.6
+  knee_target: 0.22
+  knee_flexion_sigma: 0.12
+  upright_scale: 1.6
+  height_scale: 0.9
+  action_rate_penalty_scale: 0.008
   joint_limit_penalty_scale: 0.05
-  lateral_velocity_penalty_scale: 0.15
-  fall_penalty: -20.0
+  lateral_velocity_penalty_scale: 0.10
+  backward_velocity_penalty_scale: 2.0
+  stall_penalty_scale: 3.0
+  stall_velocity_threshold: 0.06
+  fall_penalty: -15.0
 
 training:
   algorithm: ppo
-  total_timesteps: 500000
+  # 继续做 10000 步验证，看这版更激进的前进奖励能否带来明显位移。
+  total_timesteps: 10000
   max_episode_steps: 500
   seed: 42
   device: auto
-  learning_rate: 0.0003
-  n_steps: 1024
-  batch_size: 256
+  # 直接从刚刚这轮修复过 reset 之后的 walking 模型继续训练。
+  init_model_path: outputs/walk_ppo_20260411_180823/final_model.zip
+  # 显著降低学习率，并增大 rollout 长度，避免刚才那种更新过猛导致的退化。
+  learning_rate: 0.00008
+  n_steps: 256
+  batch_size: 128
   gamma: 0.99
   gae_lambda: 0.95
-  clip_range: 0.2
+  clip_range: 0.15
   ent_coef: 0.0
   vf_coef: 0.5
   policy_net_arch: [256, 256]
-  checkpoint_freq: 50000
+  checkpoint_freq: 5000
   output_root: guguji_rl/outputs
 
 evaluation:

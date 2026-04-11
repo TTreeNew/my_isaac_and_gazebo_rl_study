@@ -40,6 +40,11 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help='可选覆盖配置文件中的 total_timesteps',
     )
+    parser.add_argument(
+        '--init-model',
+        default=None,
+        help='可选指定一个已有 PPO 模型，用于继续训练或做课程学习初始化',
+    )
     return parser.parse_args()
 
 
@@ -72,6 +77,8 @@ def main() -> int:
         config['training']['device'] = args.device
     if args.total_timesteps is not None:
         config['training']['total_timesteps'] = args.total_timesteps
+    if args.init_model is not None:
+        config['training']['init_model_path'] = str(resolve_input_path(args.init_model))
 
     # 这里统一解析训练设备，方便你只改 YAML 就切换 CPU / GPU。
     config['training']['device'] = resolve_device(config['training']['device'])
@@ -115,6 +122,14 @@ def main() -> int:
         tensorboard_log=str(run_dir / 'tensorboard'),
         policy_kwargs=policy_kwargs,
     )
+
+    init_model_path = config['training'].get('init_model_path')
+    if init_model_path:
+        resolved_init_model_path = resolve_input_path(str(init_model_path))
+        # 这里不是直接 load 整个 PPO 对象，而是把旧模型参数灌入新模型。
+        # 好处是：我们仍然使用当前配置文件里的超参数，只复用之前学到的策略权重。
+        model.set_parameters(str(resolved_init_model_path), exact_match=False, device=config['training']['device'])
+        print(f"已加载课程初始化模型: {resolved_init_model_path}")
 
     model.learn(
         total_timesteps=int(config['training']['total_timesteps']),

@@ -128,6 +128,21 @@ ros2 launch guguji_ros2 gazebo.launch.py gui:=false pause:=true
 
 不要一开始就追求很快，否则双足很容易学成“扑倒式前冲”。
 
+### 阶段 C.5：轻微前进过渡
+
+目标：
+
+- 保持当前平衡能力不明显退化
+- 开始建立“轻微向前”的速度偏好
+- 为后续 walking 训练做课程过渡
+
+建议先用：
+
+- `configs/forward_transition_ppo.yaml`
+- `task.target_forward_velocity = 0.05`
+
+这一阶段最好直接从已经训好的平衡模型继续训练，而不是从零开始。
+
 ## 5. 奖励函数应该怎么理解
 
 当前代码中已经实现了一套适合入门调试的奖励结构：
@@ -217,8 +232,9 @@ ros2 launch guguji_ros2 gazebo.launch.py gui:=false pause:=true
 1. 启动 Gazebo 仿真，确认机器人正常出现。
 2. 运行 `check_env.py`，确认 reset / step / reward 能跑通。
 3. 训练 `balance_ppo.yaml`，不要急着训练 walking。
-4. 观察 `/joint_states` 和 `/tf`，检查机器人是否会频繁倒地。
-5. 调整奖励和关节范围后，再切到 `walk_ppo.yaml`。
+4. 训练出基础平衡模型后，用 `forward_transition_ppo.yaml` 做轻微前进过渡。
+5. 观察 `/joint_states` 和 `/tf`，检查机器人是否会频繁倒地，是否开始出现轻微向前趋势。
+6. 调整奖励和关节范围后，再切到 `walk_ppo.yaml`。
 
 ## 10. 训练完成后怎么在 ROS 2 里持续控制
 
@@ -237,6 +253,26 @@ python3 scripts/run_policy.py \
   --model outputs/<你的实验目录>/final_model.zip \
   --deterministic
 ```
+
+## 10.1 如何从平衡模型继续做轻微前进训练
+
+当前训练脚本已经支持把已有 PPO 模型参数作为课程学习初始化。
+
+示例命令：
+
+```bash
+cd /home/corvin/Project/guguji_simulation/guguji_rl
+source .venv/bin/activate
+python3 scripts/train.py \
+  --config configs/forward_transition_ppo.yaml \
+  --init-model outputs/<你的平衡实验目录>/final_model.zip
+```
+
+这样做的核心意义是：
+
+- 继续复用已经学到的“站稳”能力
+- 避免轻微前进阶段又退回“一步就摔”的状态
+- 让 walking 训练从更合理的初始化策略开始
 
 ## 11. 后续你最可能会继续改的地方
 

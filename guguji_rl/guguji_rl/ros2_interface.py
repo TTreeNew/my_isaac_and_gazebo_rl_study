@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import threading
 import time
+import math
+import subprocess
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Iterable
 
 import numpy as np
@@ -73,13 +76,43 @@ class _GugujiInterfaceNode(Node):
         with self._lock:
             self._latest_clock = message
 
+    def _extract_base_pose(self, tf_message: TFMessage) -> tuple[np.ndarray, np.ndarray] | None:
+        """从 TF 消息中提取机器人整体模型在世界坐标系下的位姿。"""
+        # Gazebo PosePublisher 转成 /tf 后，整机模型通常对应 child_frame_id == model_name，
+        # 例如这里会出现 child_frame_id == "guguji"、parent == "default" 的变换。
+        for transform in tf_message.transforms:
+            if transform.child_frame_id == self.model_name:
+                base_position = np.array(
+                    [
+                        transform.transform.translation.x,
+                        transform.transform.translation.y,
+                        transform.transform.translation.z,
+                    ],
+                    dtype=np.float32,
+                )
+                base_quaternion = np.array(
+                    [
+                        transform.transform.rotation.x,
+                        transform.transform.rotation.y,
+                        transform.transform.rotation.z,
+                        transform.transform.rotation.w,
+                    ],
+                    dtype=np.float32,
+                )
+                return base_position, base_quaternion
+
+        return None
+
     def snapshot(self) -> RobotStateSnapshot | None:
         with self._lock:
             joint_state = self._latest_joint_state
             tf_message = self._latest_tf
             clock_message = self._latest_clock
 
-        if joint_state is None:
+        # 强化学习环境依赖 joint_state、真实位姿和仿真时钟三者同时存在。
+        # 如果这里只等到 joint_state 就提前返回，会导致 base pose 仍然是默认全零值，
+        # 进而让环境误以为机器人一开始就已经倒地。
+        if joint_state is None or tf_message is None or clock_message is None:
             return None
 
         joint_map = {name: index for index, name in enumerate(joint_state.name)}
@@ -95,34 +128,14 @@ class _GugujiInterfaceNode(Node):
             if source_index < len(joint_state.velocity):
                 joint_velocity[output_index] = joint_state.velocity[source_index]
 
-        base_position = np.zeros(3, dtype=np.float32)
-        base_quaternion = np.array([0.0, 0.0, 0.0, 1.0], dtype=np.float32)
+        base_pose = self._extract_base_pose(tf_message)
+        if base_pose is None:
+            return None
 
-        if tf_message is not None:
-            for transform in tf_message.transforms:
-                if transform.child_frame_id == self.model_name:
-                    base_position = np.array(
-                        [
-                            transform.transform.translation.x,
-                            transform.transform.translation.y,
-                            transform.transform.translation.z,
-                        ],
-                        dtype=np.float32,
-                    )
-                    base_quaternion = np.array(
-                        [
-                            transform.transform.rotation.x,
-                            transform.transform.rotation.y,
-                            transform.transform.rotation.z,
-                            transform.transform.rotation.w,
-                        ],
-                        dtype=np.float32,
-                    )
-                    break
+        base_position, base_quaternion = base_pose
 
         sim_time = 0.0
-        if clock_message is not None:
-            sim_time = clock_message.clock.sec + clock_message.clock.nanosec * 1e-9
+        sim_time = clock_message.clock.sec + clock_message.clock.nanosec * 1e-9
 
         return RobotStateSnapshot(
             sim_time=sim_time,
@@ -146,10 +159,27 @@ class GugujiRos2Interface:
         clock_topic: str,
         world_control_service: str,
         model_name: str,
+        world_name: str,
+        model_file_path: str,
+        spawn_x: float,
+        spawn_y: float,
+        spawn_z: float,
+        spawn_roll: float,
+        spawn_pitch: float,
+        spawn_yaw: float,
     ) -> None:
         self._context = Context()
         # 训练程序使用独立 context，避免和外部 ROS 2 进程互相干扰。
         rclpy.init(args=None, context=self._context)
+        self._world_name = world_name
+        self._model_name = model_name
+        self._model_file_path = str(Path(model_file_path).resolve())
+        self._spawn_x = float(spawn_x)
+        self._spawn_y = float(spawn_y)
+        self._spawn_z = float(spawn_z)
+        self._spawn_roll = float(spawn_roll)
+        self._spawn_pitch = float(spawn_pitch)
+        self._spawn_yaw = float(spawn_yaw)
 
         self._node = _GugujiInterfaceNode(
             context=self._context,
@@ -167,6 +197,105 @@ class GugujiRos2Interface:
         # 单独起一个线程持续 spin，这样训练主循环可以专注做 step / reward。
         self._spin_thread = threading.Thread(target=self._executor.spin, daemon=True)
         self._spin_thread.start()
+
+    def _run_ign_service(
+        self,
+        *,
+        service_name: str,
+        request_type: str,
+        response_type: str,
+        request_payload: str,
+        timeout_ms: int = 5000,
+        allow_false_response: bool = False,
+    ) -> bool:
+        """调用 Gazebo 原生 transport service。"""
+        completed = subprocess.run(
+            [
+                'ign',
+                'service',
+                '-s',
+                service_name,
+                '--reqtype',
+                request_type,
+                '--reptype',
+                response_type,
+                '--timeout',
+                str(timeout_ms),
+                '--req',
+                request_payload,
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        if completed.returncode != 0:
+            raise RuntimeError(
+                f'调用 Gazebo service 失败: {service_name}\n'
+                f'stdout: {completed.stdout}\n'
+                f'stderr: {completed.stderr}'
+            )
+
+        output = completed.stdout.strip().lower()
+        if 'data: true' in output:
+            return True
+        if allow_false_response and 'data: false' in output:
+            return False
+        raise RuntimeError(
+            f'Gazebo service 返回了意外结果: {service_name}\n'
+            f'stdout: {completed.stdout}\n'
+            f'stderr: {completed.stderr}'
+        )
+
+    def _spawn_quaternion_xyzw(self) -> tuple[float, float, float, float]:
+        """把配置中的 RPY 初始姿态转换成 Gazebo 需要的四元数。"""
+        half_roll = self._spawn_roll * 0.5
+        half_pitch = self._spawn_pitch * 0.5
+        half_yaw = self._spawn_yaw * 0.5
+
+        cr = math.cos(half_roll)
+        sr = math.sin(half_roll)
+        cp = math.cos(half_pitch)
+        sp = math.sin(half_pitch)
+        cy = math.cos(half_yaw)
+        sy = math.sin(half_yaw)
+
+        x = sr * cp * cy - cr * sp * sy
+        y = cr * sp * cy + sr * cp * sy
+        z = cr * cp * sy - sr * sp * cy
+        w = cr * cp * cy + sr * sp * sy
+        return x, y, z, w
+
+    def respawn_model(self, *, pause_after_reset: bool) -> None:
+        """通过 model_only reset + set_pose 做真正的模型复位。"""
+        # Fortress 对动态生成模型执行 world reset 时，往往不会可靠恢复起始位姿；
+        # 但如果直接 remove/create，又会触发当前 JointStatePublisher 插件崩溃。
+        # 这里改用更稳妥的方案：先 reset 模型状态，再把整机姿态强制放回初始位置。
+        self.control_world(
+            pause=True,
+            reset_model_only=True,
+            timeout=5.0,
+        )
+        time.sleep(0.1)
+
+        qx, qy, qz, qw = self._spawn_quaternion_xyzw()
+        set_pose_payload = (
+            f'name: "{self._model_name}" '
+            'position: { '
+            f'x: {self._spawn_x} y: {self._spawn_y} z: {self._spawn_z} '
+            '} '
+            'orientation: { '
+            f'x: {qx} y: {qy} z: {qz} w: {qw} '
+            '}'
+        )
+        self._run_ign_service(
+            service_name=f'/world/{self._world_name}/set_pose',
+            request_type='ignition.msgs.Pose',
+            response_type='ignition.msgs.Boolean',
+            request_payload=set_pose_payload,
+            timeout_ms=5000,
+        )
+        time.sleep(0.2)
+        self.control_world(pause=pause_after_reset, timeout=5.0)
 
     def wait_for_world_control_service(self, timeout: float = 10.0) -> None:
         deadline = time.time() + timeout
