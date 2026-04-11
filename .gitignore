@@ -9,3 +9,8 @@
 # Python 运行缓存
 __pycache__/
 *.pyc
+
+# 强化学习训练工程缓存与输出
+/guguji_rl/.venv/
+/guguji_rl/outputs/
+/guguji_rl/.pytest_cache/

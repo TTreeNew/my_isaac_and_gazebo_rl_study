@@ -64,6 +64,12 @@ ros2 launch guguji_ros2 gazebo.launch.py
 ros2 launch guguji_ros2 gazebo.launch.py gui:=false
 ```
 
+如果你准备做强化学习训练，建议让 Gazebo 以暂停模式启动：
+
+```bash
+ros2 launch guguji_ros2 gazebo.launch.py gui:=false pause:=true
+```
+
 ## Fortress 调试接口
 
 `gazebo.launch.py` 现在已经接通了下面几类接口：
@@ -72,6 +78,16 @@ ros2 launch guguji_ros2 gazebo.launch.py gui:=false
 - `/joint_states`：Gazebo 真实关节状态
 - `/tf`：Gazebo 真实模型/连杆位姿
 - `/guguji/command/<joint_name>`：每个关节的位置控制命令，消息类型为 `std_msgs/msg/Float64`
+- `/world/default/control`：Gazebo 世界控制服务，可用于 reset / pause / step
+
+## 强化学习工程
+
+仓库根目录下新增了 `guguji_rl/`，用于放置强化学习训练和策略运行代码。这样做是为了把：
+
+- ROS 2 / Gazebo 仿真代码
+- Python 强化学习依赖与训练输出
+
+分开管理，后续会更容易调试。
 
 ## 控制示例
 

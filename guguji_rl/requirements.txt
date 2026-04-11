@@ -1,0 +1,9 @@
+# 说明：
+# 1. 这里不强行固定 torch 版本，方便你根据 CPU / CUDA 环境自行安装。
+# 2. 如果你要使用 GPU，请先按 PyTorch 官方方式安装带 CUDA 的 torch。
+gymnasium>=0.29
+numpy>=1.26
+PyYAML>=6.0
+rich>=13.7
+stable-baselines3>=2.3
+tensorboard>=2.14

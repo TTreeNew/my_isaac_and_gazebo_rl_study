@@ -77,6 +77,8 @@ def _create_bridge_node(context, *args, **kwargs):
         '/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock',
         # 关节状态：Gazebo -> ROS
         f'/world/{world_name}/model/guguji/joint_state@sensor_msgs/msg/JointState[gz.msgs.Model',
+        # 世界控制服务：RL 训练时用于 reset / pause / 单步推进
+        f'/world/{world_name}/control@ros_gz_interfaces/srv/ControlWorld',
     ]
 
     remappings = [
