@@ -287,13 +287,28 @@ class GugujiRos2Interface:
             f'x: {qx} y: {qy} z: {qz} w: {qw} '
             '}'
         )
-        self._run_ign_service(
-            service_name=f'/world/{self._world_name}/set_pose',
-            request_type='ignition.msgs.Pose',
-            response_type='ignition.msgs.Boolean',
-            request_payload=set_pose_payload,
-            timeout_ms=5000,
-        )
+        last_error: RuntimeError | None = None
+        for attempt_index in range(3):
+            try:
+                # Gazebo Fortress 在长时间训练时偶尔会让 set_pose 服务响应变慢，
+                # 这里给更宽裕的超时，并在失败时做短暂重试，避免整轮训练被偶发抖动打断。
+                self._run_ign_service(
+                    service_name=f'/world/{self._world_name}/set_pose',
+                    request_type='ignition.msgs.Pose',
+                    response_type='ignition.msgs.Boolean',
+                    request_payload=set_pose_payload,
+                    timeout_ms=12000,
+                )
+                last_error = None
+                break
+            except RuntimeError as error:
+                last_error = error
+                self.control_world(pause=True, timeout=5.0)
+                time.sleep(0.2 * (attempt_index + 1))
+
+        if last_error is not None:
+            raise last_error
+
         time.sleep(0.2)
         self.control_world(pause=pause_after_reset, timeout=5.0)
 

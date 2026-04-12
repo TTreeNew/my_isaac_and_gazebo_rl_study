@@ -28,6 +28,7 @@
 3. 先跑 `balance_ppo.yaml` 训练站立平衡
 4. 再跑 `forward_transition_ppo.yaml` 做轻微前进过渡训练
 5. 最后再跑 `walk_ppo.yaml` 训练正式前进
+6. `walk_ppo.yaml` 现在已经内置了 `0.18 -> 0.22 -> 0.26` 的 walking 课程阶段
 6. 训练出模型后，先用 `evaluate_forward_progress.py` 看前进效果，再用 `run_policy.py` 在 ROS 2 系统中持续推理控制
 7. 每轮训练结束后，`train.py` 会自动输出一次 `delta_x / mean_vx` 前进评估
 
@@ -100,3 +101,18 @@ python3 scripts/train.py \
   --config configs/forward_transition_ppo.yaml \
   --init-model outputs/<你的平衡实验目录>/final_model.zip
 ```
+
+对于 `walk_ppo.yaml`，现在不需要你手动分三次启动训练。
+只要直接运行一次：
+
+```bash
+cd /home/corvin/Project/guguji_simulation/guguji_rl
+source .venv/bin/activate
+python3 scripts/train.py --config configs/walk_ppo.yaml
+```
+
+`train.py` 会自动按下面三段课程顺序继续训练，并把每段的模型单独保存到对应子目录：
+
+- `0.18 m/s`
+- `0.22 m/s`
+- `0.26 m/s`

@@ -6,6 +6,9 @@ from typing import Any
 
 import yaml
 
+MODULE_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = MODULE_ROOT.parent
+
 
 DEFAULT_CONFIG: dict[str, Any] = {
     'experiment': {
@@ -21,9 +24,13 @@ DEFAULT_CONFIG: dict[str, Any] = {
             'period': 0.9,
             'stance_ratio': 0.62,
             'hip_pitch_amplitude': 0.0,
+            'hip_pitch_bias': 0.0,
             'knee_pitch_amplitude': 0.0,
             'knee_pitch_bias': 0.0,
+            'swing_knee_scale': 1.0,
             'ankle_pitch_amplitude': 0.0,
+            'ankle_pitch_bias': 0.0,
+            'push_off_ankle_scale': 0.0,
         },
     },
     'ros': {
@@ -75,16 +82,18 @@ DEFAULT_CONFIG: dict[str, Any] = {
         'stall_velocity_threshold': 0.0,
         'fall_penalty': -10.0,
     },
-    'training': {
-        'algorithm': 'ppo',
-        'total_timesteps': 200000,
-        'max_episode_steps': 400,
-        'seed': 42,
-        'device': 'auto',
-        'init_model_path': None,
-        'learning_rate': 3e-4,
-        'n_steps': 1024,
-        'batch_size': 256,
+        'training': {
+            'algorithm': 'ppo',
+            'total_timesteps': 200000,
+            'max_episode_steps': 400,
+            'seed': 42,
+            'device': 'auto',
+            'init_model_path': None,
+            'initial_log_std': None,
+            'curriculum_stages': [],
+            'learning_rate': 3e-4,
+            'n_steps': 1024,
+            'batch_size': 256,
         'gamma': 0.99,
         'gae_lambda': 0.95,
         'clip_range': 0.2,
@@ -122,8 +131,10 @@ def load_config(config_path: str | Path) -> dict[str, Any]:
     config = _deep_update(copy.deepcopy(DEFAULT_CONFIG), user_config)
     config['meta'] = {
         'config_path': str(config_path),
-        'project_root': str(config_path.parents[2]),
-        'rl_root': str(config_path.parents[1]),
+        # 不再假设配置文件一定放在仓库里的固定层级，
+        # 这样外部临时配置、导出的实验配置也可以直接拿来训练。
+        'project_root': str(PROJECT_ROOT),
+        'rl_root': str(MODULE_ROOT),
     }
     return config
 

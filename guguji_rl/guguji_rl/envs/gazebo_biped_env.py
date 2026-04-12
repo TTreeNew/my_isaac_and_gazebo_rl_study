@@ -135,43 +135,52 @@ class GazeboBipedEnv(gym.Env):
             return offsets
 
         hip_amplitude = float(self.reference_gait_config.get('hip_pitch_amplitude', 0.0))
+        hip_bias = float(self.reference_gait_config.get('hip_pitch_bias', 0.0))
         knee_amplitude = float(self.reference_gait_config.get('knee_pitch_amplitude', 0.0))
         knee_bias = float(self.reference_gait_config.get('knee_pitch_bias', 0.0))
+        swing_knee_scale = float(self.reference_gait_config.get('swing_knee_scale', 1.0))
         ankle_amplitude = float(self.reference_gait_config.get('ankle_pitch_amplitude', 0.0))
+        ankle_bias = float(self.reference_gait_config.get('ankle_pitch_bias', 0.0))
+        push_off_ankle_scale = float(self.reference_gait_config.get('push_off_ankle_scale', 0.0))
         stance_ratio = float(self.reference_gait_config.get('stance_ratio', 0.62))
         stance_ratio = float(np.clip(stance_ratio, 0.05, 0.95))
 
-        def gait_profile(phase: float) -> tuple[float, float]:
-            """返回该相位下的髋关节目标形状和膝关节摆动形状。"""
+        def gait_profile(phase: float) -> tuple[float, float, float]:
+            """返回该相位下的髋、膝、踝参考轨迹形状。"""
             phase = phase % 1.0
             if phase < stance_ratio:
                 stance_progress = phase / stance_ratio
-                # 支撑期：腿缓慢向后划，形成推地趋势。
-                hip_profile = -1.0 + 2.0 * stance_progress
-                knee_profile = 0.0
+                # 支撑期：落脚时腿应在身体前方，随后逐渐向后划过身体，
+                # 这样才更容易把机体“送”向前方，而不是原地踏步。
+                hip_profile = 1.0 - 2.0 * stance_progress
+                knee_profile = 0.18 * math.sin(math.pi * stance_progress)
+                push_off_progress = max((stance_progress - 0.60) / 0.40, 0.0)
+                ankle_profile = -0.70 * hip_profile + push_off_ankle_scale * push_off_progress
             else:
                 swing_progress = (phase - stance_ratio) / (1.0 - stance_ratio)
-                # 摆动期：腿更快地向前回摆，并伴随膝关节抬腿。
-                hip_profile = 1.0 - 2.0 * swing_progress
-                knee_profile = math.sin(math.pi * swing_progress)
-            return hip_profile, knee_profile
+                # 摆动期：腿从身体后方快速回摆到前方，同时膝关节明显抬起，
+                # 这样 Gazebo 里能更容易看到“迈腿”的效果。
+                hip_profile = -1.0 + 2.0 * swing_progress
+                knee_profile = swing_knee_scale * math.sin(math.pi * swing_progress)
+                ankle_profile = -0.45 * hip_profile - 0.25 * math.sin(math.pi * swing_progress)
+            return hip_profile, knee_profile, ankle_profile
 
-        left_hip_profile, left_knee_profile = gait_profile(self.gait_phase)
-        right_hip_profile, right_knee_profile = gait_profile(self.gait_phase + 0.5)
+        left_hip_profile, left_knee_profile, left_ankle_profile = gait_profile(self.gait_phase)
+        right_hip_profile, right_knee_profile, right_ankle_profile = gait_profile(self.gait_phase + 0.5)
 
         for index, joint_name in enumerate(self.joint_names):
             if joint_name == 'left_hip_pitch_joint':
-                offsets[index] = hip_amplitude * left_hip_profile
+                offsets[index] = hip_bias + hip_amplitude * left_hip_profile
             elif joint_name == 'right_hip_pitch_joint':
-                offsets[index] = hip_amplitude * right_hip_profile
+                offsets[index] = hip_bias + hip_amplitude * right_hip_profile
             elif joint_name == 'left_knee_pitch_joint':
                 offsets[index] = knee_bias + knee_amplitude * left_knee_profile
             elif joint_name == 'right_knee_pitch_joint':
                 offsets[index] = knee_bias + knee_amplitude * right_knee_profile
             elif joint_name == 'left_ankle_pitch_joint':
-                offsets[index] = -ankle_amplitude * left_hip_profile
+                offsets[index] = ankle_bias + ankle_amplitude * left_ankle_profile
             elif joint_name == 'right_ankle_pitch_joint':
-                offsets[index] = -ankle_amplitude * right_hip_profile
+                offsets[index] = ankle_bias + ankle_amplitude * right_ankle_profile
 
         return offsets
 

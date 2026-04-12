@@ -235,6 +235,7 @@ ros2 launch guguji_ros2 gazebo.launch.py gui:=false pause:=true
 4. 训练出基础平衡模型后，用 `forward_transition_ppo.yaml` 做轻微前进过渡。
 5. 观察 `/joint_states` 和 `/tf`，检查机器人是否会频繁倒地，是否开始出现轻微向前趋势。
 6. 调整奖励和关节范围后，再切到 `walk_ppo.yaml`。
+7. `walk_ppo.yaml` 现在已经支持自动课程学习，会按 `0.18 -> 0.22 -> 0.26 m/s` 逐段抬升目标速度。
 
 ## 11. 怎么快速比较“这轮训练到底有没有更往前走”
 
@@ -257,6 +258,29 @@ python3 scripts/evaluate_forward_progress.py \
 ```
 
 这样你后面对比不同 walking 配置时，不需要每次肉眼猜模型是不是更会往前走，终端里会直接给出量化结果。
+
+## 12. walking 阶段为什么建议用三段速度课程
+
+如果一上来就把 `task.target_forward_velocity` 顶到较高值，双足机器人很容易出现两种情况：
+
+- 原地乱摆腿，但身体没有稳定前移
+- 为了追速度直接前扑，episode 很短
+
+所以现在的 `configs/walk_ppo.yaml` 已经内置三段课程：
+
+- `0.18 m/s`
+- `0.22 m/s`
+- `0.26 m/s`
+
+训练时直接运行一次：
+
+```bash
+cd /home/corvin/Project/guguji_simulation/guguji_rl
+source .venv/bin/activate
+python3 scripts/train.py --config configs/walk_ppo.yaml
+```
+
+`train.py` 会自动把这三段串起来训练，并把每一段的模型分别保存到输出目录下的阶段子目录中。
 
 ## 10. 训练完成后怎么在 ROS 2 里持续控制
 
