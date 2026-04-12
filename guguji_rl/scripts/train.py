@@ -12,6 +12,7 @@ if str(SCRIPT_ROOT) not in sys.path:
 import torch
 
 from guguji_rl.config import load_config, resolve_project_path, save_yaml
+from guguji_rl.evaluation import evaluate_forward_progress, print_forward_progress_summary
 
 
 def resolve_device(device_name: str) -> str:
@@ -44,6 +45,11 @@ def parse_args() -> argparse.Namespace:
         '--init-model',
         default=None,
         help='可选指定一个已有 PPO 模型，用于继续训练或做课程学习初始化',
+    )
+    parser.add_argument(
+        '--skip-auto-eval',
+        action='store_true',
+        help='训练完成后跳过自动前进评估',
     )
     return parser.parse_args()
 
@@ -136,9 +142,27 @@ def main() -> int:
         callback=checkpoint_callback,
         progress_bar=True,
     )
-    model.save(run_dir / 'final_model')
+    final_model_path = run_dir / 'final_model'
+    model.save(final_model_path)
     env.close()
+
     print(f'训练完成，模型已保存到: {run_dir / "final_model.zip"}')
+
+    evaluation_config = config['evaluation']
+    if bool(evaluation_config.get('auto_forward_progress', True)) and not args.skip_auto_eval:
+        try:
+            # 每轮训练结束后自动做一次前进评估，方便你快速看 delta_x / mean_vx。
+            summary = evaluate_forward_progress(
+                config=config,
+                model_path=final_model_path,
+                episodes=int(evaluation_config['forward_progress_episodes']),
+                max_steps=int(evaluation_config['forward_progress_max_steps']),
+                deterministic=bool(evaluation_config['forward_progress_deterministic']),
+            )
+            print_forward_progress_summary(summary)
+        except Exception as error:
+            print(f'自动前进评估失败: {error}', file=sys.stderr)
+
     return 0
 
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import time
 from typing import Any
 
@@ -27,6 +28,7 @@ class GazeboBipedEnv(gym.Env):
         self.task_config = config['task']
         self.training_config = config['training']
         self.configured_target_base_height = self.task_config['target_base_height']
+        self.reference_gait_config = self.robot_config.get('reference_gait', {})
 
         urdf_path = resolve_project_path(config, self.robot_config['urdf_path'])
         self.joint_limits: list[JointLimit] = parse_joint_limits(
@@ -52,6 +54,11 @@ class GazeboBipedEnv(gym.Env):
         self.action_smoothing = float(np.clip(self.action_smoothing, 0.0, 0.99))
         self.reset_hold_steps = int(self.sim_config.get('reset_hold_steps', 1))
         self.termination_grace_steps = int(self.task_config.get('termination_grace_steps', 0))
+        self.reference_gait_enabled = bool(self.reference_gait_config.get('enabled', False))
+        self.reference_gait_period = max(
+            float(self.reference_gait_config.get('period', 0.9)),
+            float(self.sim_config['control_dt']),
+        )
 
         self.interface = GugujiRos2Interface(
             joint_names=self.joint_names,
@@ -92,31 +99,86 @@ class GazeboBipedEnv(gym.Env):
         self.previous_snapshot: RobotStateSnapshot | None = None
         self.current_snapshot: RobotStateSnapshot | None = None
         self.current_joint_target = self.nominal_joint_targets.copy()
+        self.current_action_residual = np.zeros(len(self.joint_names), dtype=np.float32)
         self.step_count = 0
         self.target_base_height = self.configured_target_base_height
+        self.gait_phase = 0.0
 
     def _normalized_joint_position(self, joint_position: np.ndarray) -> np.ndarray:
         return (joint_position - self.joint_mid) / self.joint_half_range
 
     def _action_to_joint_targets(self, action: np.ndarray) -> np.ndarray:
         clipped_action = np.clip(action, -1.0, 1.0)
+        reference_offsets = self._reference_gait_offsets()
+        reference_targets = self.nominal_joint_targets + reference_offsets
         # 将 [-1, 1] 的策略输出缩放成“围绕名义站姿的小残差动作”，
         # 这样 PPO 初期随机动作不会一下把关节打到很远的位置。
-        desired_targets = (
-            self.nominal_joint_targets
-            + clipped_action * self.joint_half_range * self.action_scale
-        )
-        desired_targets = np.clip(desired_targets, self.joint_lower, self.joint_upper)
+        desired_residual = clipped_action * self.joint_half_range * self.action_scale
 
         if self.action_smoothing > 0.0:
-            joint_targets = (
-                self.action_smoothing * self.current_joint_target
-                + (1.0 - self.action_smoothing) * desired_targets
+            smoothed_residual = (
+                self.action_smoothing * self.current_action_residual
+                + (1.0 - self.action_smoothing) * desired_residual
             )
         else:
-            joint_targets = desired_targets
+            smoothed_residual = desired_residual
+
+        self.current_action_residual = smoothed_residual.astype(np.float32)
+        joint_targets = reference_targets + self.current_action_residual
 
         return np.clip(joint_targets, self.joint_lower, self.joint_upper).astype(np.float32)
+
+    def _reference_gait_offsets(self) -> np.ndarray:
+        """生成一个简洁的参考步态，让 walking 阶段先学会交替迈腿。"""
+        offsets = np.zeros(len(self.joint_names), dtype=np.float32)
+        if not self.reference_gait_enabled:
+            return offsets
+
+        hip_amplitude = float(self.reference_gait_config.get('hip_pitch_amplitude', 0.0))
+        knee_amplitude = float(self.reference_gait_config.get('knee_pitch_amplitude', 0.0))
+        knee_bias = float(self.reference_gait_config.get('knee_pitch_bias', 0.0))
+        ankle_amplitude = float(self.reference_gait_config.get('ankle_pitch_amplitude', 0.0))
+        stance_ratio = float(self.reference_gait_config.get('stance_ratio', 0.62))
+        stance_ratio = float(np.clip(stance_ratio, 0.05, 0.95))
+
+        def gait_profile(phase: float) -> tuple[float, float]:
+            """返回该相位下的髋关节目标形状和膝关节摆动形状。"""
+            phase = phase % 1.0
+            if phase < stance_ratio:
+                stance_progress = phase / stance_ratio
+                # 支撑期：腿缓慢向后划，形成推地趋势。
+                hip_profile = -1.0 + 2.0 * stance_progress
+                knee_profile = 0.0
+            else:
+                swing_progress = (phase - stance_ratio) / (1.0 - stance_ratio)
+                # 摆动期：腿更快地向前回摆，并伴随膝关节抬腿。
+                hip_profile = 1.0 - 2.0 * swing_progress
+                knee_profile = math.sin(math.pi * swing_progress)
+            return hip_profile, knee_profile
+
+        left_hip_profile, left_knee_profile = gait_profile(self.gait_phase)
+        right_hip_profile, right_knee_profile = gait_profile(self.gait_phase + 0.5)
+
+        for index, joint_name in enumerate(self.joint_names):
+            if joint_name == 'left_hip_pitch_joint':
+                offsets[index] = hip_amplitude * left_hip_profile
+            elif joint_name == 'right_hip_pitch_joint':
+                offsets[index] = hip_amplitude * right_hip_profile
+            elif joint_name == 'left_knee_pitch_joint':
+                offsets[index] = knee_bias + knee_amplitude * left_knee_profile
+            elif joint_name == 'right_knee_pitch_joint':
+                offsets[index] = knee_bias + knee_amplitude * right_knee_profile
+            elif joint_name == 'left_ankle_pitch_joint':
+                offsets[index] = -ankle_amplitude * left_hip_profile
+            elif joint_name == 'right_ankle_pitch_joint':
+                offsets[index] = -ankle_amplitude * right_hip_profile
+
+        return offsets
+
+    def _advance_gait_phase(self) -> None:
+        if not self.reference_gait_enabled:
+            return
+        self.gait_phase = (self.gait_phase + float(self.sim_config['control_dt']) / self.reference_gait_period) % 1.0
 
     def _get_target_base_height(self, snapshot: RobotStateSnapshot) -> float:
         if self.target_base_height is None:
@@ -208,7 +270,9 @@ class GazeboBipedEnv(gym.Env):
         self.previous_snapshot = snapshot
         self.previous_action = np.zeros(len(self.joint_names), dtype=np.float32)
         self.current_joint_target = self.nominal_joint_targets.copy()
+        self.current_action_residual = np.zeros(len(self.joint_names), dtype=np.float32)
         self.step_count = 0
+        self.gait_phase = 0.0
 
         observation = self._build_observation(snapshot, snapshot, self.previous_action)
         info = {
@@ -228,6 +292,7 @@ class GazeboBipedEnv(gym.Env):
         self.current_joint_target = joint_targets.copy()
         self._publish_joint_targets(joint_targets)
         self._advance_simulation()
+        self._advance_gait_phase()
 
         self.previous_snapshot = self.current_snapshot
         self.current_snapshot = self.interface.wait_for_snapshot()

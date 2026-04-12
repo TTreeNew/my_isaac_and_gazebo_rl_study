@@ -16,6 +16,15 @@ DEFAULT_CONFIG: dict[str, Any] = {
         'urdf_path': 'guguji_ros2_ws/src/guguji_ros2/urdf/guguji.urdf',
         'joint_names': [],
         'command_topic_prefix': '/guguji/command',
+        'reference_gait': {
+            'enabled': False,
+            'period': 0.9,
+            'stance_ratio': 0.62,
+            'hip_pitch_amplitude': 0.0,
+            'knee_pitch_amplitude': 0.0,
+            'knee_pitch_bias': 0.0,
+            'ankle_pitch_amplitude': 0.0,
+        },
     },
     'ros': {
         'joint_state_topic': '/joint_states',
@@ -88,6 +97,10 @@ DEFAULT_CONFIG: dict[str, Any] = {
     'evaluation': {
         'episodes': 3,
         'deterministic': True,
+        'auto_forward_progress': True,
+        'forward_progress_episodes': 2,
+        'forward_progress_max_steps': 500,
+        'forward_progress_deterministic': True,
     },
 }
 

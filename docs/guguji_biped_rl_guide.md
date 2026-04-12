@@ -220,8 +220,8 @@ ros2 launch guguji_ros2 gazebo.launch.py gui:=false pause:=true
   奖励函数
 - `guguji_rl/scripts/train.py`
   PPO 训练
-- `guguji_rl/scripts/evaluate.py`
-  加载策略并运行
+- `guguji_rl/scripts/evaluate_forward_progress.py`
+  评估模型的 `delta_x / mean_vx`
 - `guguji_rl/scripts/run_policy.py`
   把训练好的策略作为在线控制程序持续运行
 - `guguji_rl/scripts/check_env.py`
@@ -235,6 +235,28 @@ ros2 launch guguji_ros2 gazebo.launch.py gui:=false pause:=true
 4. 训练出基础平衡模型后，用 `forward_transition_ppo.yaml` 做轻微前进过渡。
 5. 观察 `/joint_states` 和 `/tf`，检查机器人是否会频繁倒地，是否开始出现轻微向前趋势。
 6. 调整奖励和关节范围后，再切到 `walk_ppo.yaml`。
+
+## 11. 怎么快速比较“这轮训练到底有没有更往前走”
+
+后面调 walking 参数时，最实用的指标就是：
+
+- `delta_x`
+- `mean_vx`
+
+当前代码已经支持两种方式：
+
+1. 每次 `scripts/train.py` 训练结束后，会自动输出一次前进评估汇总。
+2. 你也可以手动运行：
+
+```bash
+cd /home/corvin/Project/guguji_simulation/guguji_rl
+source .venv/bin/activate
+python3 scripts/evaluate_forward_progress.py \
+  --config configs/walk_ppo.yaml \
+  --model outputs/<你的实验目录>/final_model.zip
+```
+
+这样你后面对比不同 walking 配置时，不需要每次肉眼猜模型是不是更会往前走，终端里会直接给出量化结果。
 
 ## 10. 训练完成后怎么在 ROS 2 里持续控制
 

@@ -17,7 +17,7 @@
 - `guguji_rl/envs/gazebo_biped_env.py`：Gymnasium 环境封装
 - `guguji_rl/rewards.py`：奖励函数
 - `scripts/train.py`：PPO 训练入口
-- `scripts/evaluate.py`：加载训练好的策略并在 Gazebo 中运行
+- `scripts/evaluate_forward_progress.py`：评估模型的 `delta_x / mean_vx`
 - `scripts/run_policy.py`：把训练好的策略作为在线控制程序持续运行
 - `scripts/check_env.py`：训练前自检脚本
 
@@ -28,7 +28,8 @@
 3. 先跑 `balance_ppo.yaml` 训练站立平衡
 4. 再跑 `forward_transition_ppo.yaml` 做轻微前进过渡训练
 5. 最后再跑 `walk_ppo.yaml` 训练正式前进
-6. 训练出模型后，先用 `evaluate.py` 做回放，再用 `run_policy.py` 在 ROS 2 系统中持续推理控制
+6. 训练出模型后，先用 `evaluate_forward_progress.py` 看前进效果，再用 `run_policy.py` 在 ROS 2 系统中持续推理控制
+7. 每轮训练结束后，`train.py` 会自动输出一次 `delta_x / mean_vx` 前进评估
 
 ## 安装依赖
 
@@ -67,6 +68,26 @@ python3 scripts/run_policy.py \
   --model outputs/<你的实验目录>/final_model.zip \
   --deterministic
 ```
+
+## 单独评估前进效果
+
+如果你想手动比较两个模型的前进能力，可以直接运行：
+
+```bash
+cd /home/corvin/Project/guguji_simulation/guguji_rl
+source .venv/bin/activate
+python3 scripts/evaluate_forward_progress.py \
+  --config configs/walk_ppo.yaml \
+  --model outputs/<你的实验目录>/final_model.zip
+```
+
+评估结果会直接输出每个 episode 的：
+
+- `delta_x`
+- `mean_vx`
+- `total_reward`
+
+以及最后的平均汇总值，后面调 walking 参数时会很方便。
 
 ## 课程学习训练示例
 

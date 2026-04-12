@@ -25,10 +25,20 @@ robot:
     right_knee_pitch_joint: 0.0
     right_ankle_pitch_joint: 0.0
     right_ankle_joint: 0.0
-  # 在 reset 修好后，再把动作空间稍微放大一点，让策略更容易真正迈开步子。
-  action_scale: 0.26
-  # 比上一轮略微降低平滑，给左右腿交替摆动更多空间。
-  action_smoothing: 0.62
+  # 这一轮改成“参考步态 + 残差动作”：
+  # 先让双腿有明确的交替摆动节奏，再由策略学习如何稳住并把步态转成前进。
+  reference_gait:
+    enabled: true
+    period: 0.80
+    # 让摆动期更短、支撑期更长，更像真正向前走时的步态节奏。
+    stance_ratio: 0.62
+    hip_pitch_amplitude: 0.28
+    knee_pitch_amplitude: 0.36
+    knee_pitch_bias: 0.08
+    ankle_pitch_amplitude: 0.18
+  # 参考步态已经会主动摆腿，所以残差动作幅度可以适当收小一点。
+  action_scale: 0.18
+  action_smoothing: 0.72
 
 ros:
   joint_state_topic: /joint_states
@@ -58,8 +68,8 @@ sim:
   launch_hint: ros2 launch guguji_ros2 gazebo.launch.py pause:=true
 
 task:
-  # 再把目标速度往上推一点，进一步压缩“原地小幅挪动”的可行空间。
-  target_forward_velocity: 0.18
+  # 参考步态接入后，把目标速度继续往上推，逼着策略把摆腿转成前进位移。
+  target_forward_velocity: 0.22
   target_base_height: null
   # 允许稍大一点机体摆动，为迈步时的动态平衡留空间。
   max_roll_rad: 0.90
@@ -68,27 +78,25 @@ task:
   termination_grace_steps: 12
 
 rewards:
-  # 这一版在前进奖励之外，额外加入轻量步态先验:
-  # 1. hip_alternation 鼓励左右髋关节交替摆动
-  # 2. knee_flexion 鼓励膝关节适度弯曲，帮助抬腿
-  alive_bonus: 0.8
-  velocity_tracking_scale: 3.8
-  velocity_tracking_sigma: 0.10
-  forward_progress_scale: 4.2
-  hip_alternation_scale: 0.8
+  # 参考步态已经负责“先迈起来”，这里的奖励更聚焦于“迈起来以后要往前走”。
+  alive_bonus: 0.6
+  velocity_tracking_scale: 4.2
+  velocity_tracking_sigma: 0.09
+  forward_progress_scale: 5.0
+  hip_alternation_scale: 0.4
   hip_target_separation: 0.35
   hip_antiphase_sigma: 0.18
-  knee_flexion_scale: 0.6
+  knee_flexion_scale: 0.3
   knee_target: 0.22
   knee_flexion_sigma: 0.12
   upright_scale: 1.6
   height_scale: 0.9
-  action_rate_penalty_scale: 0.008
+  action_rate_penalty_scale: 0.006
   joint_limit_penalty_scale: 0.05
   lateral_velocity_penalty_scale: 0.10
-  backward_velocity_penalty_scale: 2.0
-  stall_penalty_scale: 3.0
-  stall_velocity_threshold: 0.06
+  backward_velocity_penalty_scale: 2.5
+  stall_penalty_scale: 4.0
+  stall_velocity_threshold: 0.08
   fall_penalty: -15.0
 
 training:
@@ -98,8 +106,9 @@ training:
   max_episode_steps: 500
   seed: 42
   device: auto
-  # 直接从刚刚这轮修复过 reset 之后的 walking 模型继续训练。
-  init_model_path: outputs/walk_ppo_20260411_180823/final_model.zip
+  # 由于参考步态接入后控制结构变化较大，这里仍然沿用最新 walking 模型作为初始化，
+  # 但把学习率压得更低，让策略以“细修”的方式适应新节奏。
+  init_model_path: outputs/walk_ppo_20260412_181640/final_model.zip
   # 显著降低学习率，并增大 rollout 长度，避免刚才那种更新过猛导致的退化。
   learning_rate: 0.00008
   n_steps: 256
