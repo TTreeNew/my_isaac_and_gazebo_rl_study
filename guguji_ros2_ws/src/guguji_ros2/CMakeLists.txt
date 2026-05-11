@@ -12,7 +12,7 @@ install(
     launch
     meshes
     rviz
-    textures
+    # textures #可能是模型的纹理贴图，原git仓库里没有
     urdf
     worlds
   DESTINATION share/${PROJECT_NAME}
