@@ -2,6 +2,9 @@
 
 `guguji_rl` 是 `guguji_simulation` 仓库里的强化学习训练工程。
 
+# guguji_isaaclab
+  guguji_isaaclab位于`https://github.com/osrbot/guguji_isaaclab`，这里无法打开
+
 ## 为什么单独放在仓库根目录
 
 我把训练代码放在 `guguji_ros2_ws` 外面，原因是：
